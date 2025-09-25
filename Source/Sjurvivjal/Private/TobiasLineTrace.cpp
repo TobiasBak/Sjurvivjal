@@ -30,7 +30,6 @@ void UTobiasLineTrace::BeginPlay()
 void UTobiasLineTrace::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Green, TEXT("TobiasLineTrace TickComponent"));
 	FHitResult Hit = LineTrace();
 
 	if (Hit.bBlockingHit)
@@ -75,7 +74,6 @@ FHitResult UTobiasLineTrace::LineTrace()
 	if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, CollisionParams))
 	{
 		// Line trace hit something
-		UE_LOG(LogTemp, Warning, TEXT("Line trace hit:"));
 		return HitResult;
 
 		DrawDebugLine(
