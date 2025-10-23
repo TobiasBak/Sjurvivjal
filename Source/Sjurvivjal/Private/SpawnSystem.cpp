@@ -1,0 +1,80 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+
+#include "SpawnSystem.h"
+#include "Components/BoxComponent.h"
+#include "Engine/World.h"
+
+// Sets default values
+ASpawnSystem::ASpawnSystem()
+{
+ 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	PrimaryActorTick.bCanEverTick = true;
+
+	SpawnableActor = nullptr;
+	SpawnDelay = 1.0f;
+	SpawnCount = 1;
+	MaxActorsInCollisionBox = 5;
+	bSpawnOnlyAtNight = false; // Default: spawn at any time
+
+	// Create and attach the collision box
+    CollisionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("CollisionBox"));
+    CollisionBox->SetupAttachment(RootComponent);
+
+    // Set the default size of the collision box
+    CollisionBox->SetBoxExtent(FVector(200.0f, 200.0f, 200.0f));
+    CollisionBox->SetCollisionProfileName(TEXT("Trigger"));
+}
+
+// Called when the game starts or when spawned
+void ASpawnSystem::BeginPlay()
+{
+	Super::BeginPlay();
+	
+}
+
+float TimeSinceLastSpawn = 0.0f;
+
+// Called every frame
+void ASpawnSystem::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+
+    TimeSinceLastSpawn += DeltaTime;
+
+    if (TimeSinceLastSpawn >= SpawnDelay)
+    {
+        TimeSinceLastSpawn = 0.0f;
+
+        // Check if spawning is allowed based on the day/night cycle
+        if (DayNightCycle)
+        {
+            bool bIsDaytime = DayNightCycle->IsDaytime();
+            if ((bSpawnOnlyAtNight && bIsDaytime) || (!bSpawnOnlyAtNight && !bIsDaytime))
+            {
+                return; // Skip spawning if the time doesn't match the spawn condition
+            }
+        }
+
+        // Check if there is room in the collision box
+        if (IsRoomInCollisionBox())
+        {
+            for (int32 i = 0; i < SpawnCount; ++i)
+            {
+                if (SpawnableActor)
+                {
+                    GetWorld()->SpawnActor<AActor>(SpawnableActor, GetActorLocation(), FRotator::ZeroRotator);
+                }
+            }
+        }
+    }
+}
+
+bool ASpawnSystem::IsRoomInCollisionBox() const
+{
+    TArray<AActor*> OverlappingActors;
+    CollisionBox->GetOverlappingActors(OverlappingActors);
+
+    // Check if the number of overlapping actors is less than the max allowed
+    return OverlappingActors.Num() < MaxActorsInCollisionBox;
+}
