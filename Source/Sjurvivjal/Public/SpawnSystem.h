@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/BoxComponent.h"
-#include "DayNightCycle.h" // Include the DayNightCycle header
+#include "DayNightCycle.h"
 #include "SpawnSystem.generated.h"
 
 UCLASS()
@@ -18,6 +18,8 @@ public:
 protected:
     // Called when the game starts or when spawned
     virtual void BeginPlay() override;
+
+    void SetActorDifficulty(AActor* SpawnedActor);
 
 public:	
     // Called every frame
@@ -54,4 +56,8 @@ public:
     // Whether to spawn only during the day or night
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bSpawnOnlyAtNight;
+
+    // Difficulty multiplier based on day count
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float DifficultyMultiplierPerDay = 0.1f;
 };
