@@ -23,35 +23,42 @@ void ADayNightCycle::BeginPlay()
 // Called every frame
 void ADayNightCycle::Tick(float DeltaTime)
 {
-		Super::Tick(DeltaTime);
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Green, FString::Printf(TEXT("Current Time of Day: %f"), CurrentTimeOfDay));
+    Super::Tick(DeltaTime);
+    GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Green, FString::Printf(TEXT("Current Time of Day: %f"), CurrentTimeOfDay));
 
-		// Advance time
-		CurrentTimeOfDay += DeltaTime;
-		float CycleLength = DayLength + NightLength;
-		if (CurrentTimeOfDay >= CycleLength)
-		{
-			CurrentTimeOfDay -= CycleLength; // Loop back to start
-		}
+    // Advance time
+    CurrentTimeOfDay += DeltaTime;
+    float CycleLength = DayLength + NightLength;
+    if (CurrentTimeOfDay >= CycleLength)
+    {
+        CurrentTimeOfDay -= CycleLength; // Loop back to start
+        DayCounter++; // Increment the day counter
+    }
 
-		// Broadcast normalized time and day/night state at specified frequency
-		bool bIsDay = CurrentTimeOfDay < DayLength;
-		float NormalizedTime = 0.0f;
-		float PeriodLength = bIsDay ? DayLength : NightLength;
-		float TimeInPeriod = bIsDay ? CurrentTimeOfDay : (CurrentTimeOfDay - DayLength);
-		NormalizedTime = TimeInPeriod / PeriodLength;
+    // Broadcast normalized time and day/night state at specified frequency
+    bool bIsDay = CurrentTimeOfDay < DayLength;
+    float NormalizedTime = 0.0f;
+    float PeriodLength = bIsDay ? DayLength : NightLength;
+    float TimeInPeriod = bIsDay ? CurrentTimeOfDay : (CurrentTimeOfDay - DayLength);
+    NormalizedTime = TimeInPeriod / PeriodLength;
 
-		int32 EventIndex = FMath::FloorToInt(NormalizedTime * EventFrequencyPerDay);
-		if (EventIndex != LastEventIndex)
-		{
-			LastEventIndex = EventIndex;
-			TArray<AActor*> ActorsWithInterface;
-			UGameplayStatics::GetAllActorsWithInterface(GetWorld(), UBPI_DayTimeChange::StaticClass(), ActorsWithInterface);
-			for (AActor* Actor : ActorsWithInterface)
-			{
-				IBPI_DayTimeChange::Execute_OnPeriodChanged(Actor, bIsDay, NormalizedTime);
-			}
-		}
+    int32 EventIndex = FMath::FloorToInt(NormalizedTime * EventFrequencyPerDay);
+    if (EventIndex != LastEventIndex)
+    {
+        LastEventIndex = EventIndex;
+        TArray<AActor*> ActorsWithInterface;
+        UGameplayStatics::GetAllActorsWithInterface(GetWorld(), UBPI_DayTimeChange::StaticClass(), ActorsWithInterface);
+        for (AActor* Actor : ActorsWithInterface)
+        {
+            IBPI_DayTimeChange::Execute_OnPeriodChanged(Actor, bIsDay, NormalizedTime);
+        }
+    }
+}
+
+// Returns the current day of the cycle
+int32 ADayNightCycle::GetCurrentDay() const
+{
+    return DayCounter;
 }
 
 // Returns true if it is currently daytime
