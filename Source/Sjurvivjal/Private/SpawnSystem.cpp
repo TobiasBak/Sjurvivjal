@@ -4,6 +4,7 @@
 #include "SpawnSystem.h"
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
+#include "BPI_Difficulty.h"
 
 // Sets default values
 ASpawnSystem::ASpawnSystem()
@@ -63,10 +64,34 @@ void ASpawnSystem::Tick(float DeltaTime)
             {
                 if (SpawnableActor)
                 {
-                    GetWorld()->SpawnActor<AActor>(SpawnableActor, GetActorLocation(), FRotator::ZeroRotator);
+                    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(SpawnableActor, GetActorLocation(), FRotator::ZeroRotator);
+                    if (SpawnedActor)
+                    {
+                        // Set the difficulty variable on the spawned actor
+                        SetActorDifficulty(SpawnedActor);
+                    }
                 }
             }
         }
+    }
+}
+
+void ASpawnSystem::SetActorDifficulty(AActor* SpawnedActor)
+{
+    if (!SpawnedActor) return;
+
+    // Calculate the difficulty based on the day count
+    float Difficulty = 1.0f;
+    if (DayNightCycle)
+    {
+        int32 CurrentDay = DayNightCycle->GetCurrentDay();
+        Difficulty = 1.0f + (CurrentDay * DifficultyMultiplierPerDay);
+    }
+
+    // Check if the spawned actor has a difficulty variable
+    if (SpawnedActor->Implements<UBPI_Difficulty>())
+    {
+        IBPI_Difficulty::Execute_UpdateDifficulty(SpawnedActor, Difficulty);
     }
 }
 

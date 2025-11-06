@@ -26,7 +26,7 @@ public:
 
 	// How many times per day to send the event
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DayNightCycle")
-	int32 EventFrequencyPerDay = 100;
+	int32 EventFrequencyPerDay = 1000;
 
 	// Returns true if it is currently daytime
 	UFUNCTION(BlueprintCallable, Category = "DayNightCycle")
@@ -35,6 +35,13 @@ public:
 	// Returns the current time of day in seconds since the start of the cycle
 	UFUNCTION(BlueprintCallable, Category = "DayNightCycle")
 	float GetTimeOfDay() const;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DayNightCycle")
+    int32 DayCounter = 1; // Tracks the current day, starting from 1
+
+    // Returns the current day of the cycle
+    UFUNCTION(BlueprintCallable, Category = "DayNightCycle")
+    int32 GetCurrentDay() const;
 
 private:
 	int32 LastEventIndex = -1;
