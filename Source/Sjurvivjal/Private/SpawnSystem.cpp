@@ -1,6 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
+#include "Kismet/KismetMathLibrary.h"
 #include "SpawnSystem.h"
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
@@ -41,6 +41,8 @@ void ASpawnSystem::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
+    if (!SpawnableActor) { return; }
+
     TimeSinceLastSpawn += DeltaTime;
 
     if (TimeSinceLastSpawn >= SpawnDelay)
@@ -58,17 +60,27 @@ void ASpawnSystem::Tick(float DeltaTime)
         }
 
         // Check if there is room in the collision box
-        if (IsRoomInCollisionBox())
-        {
-            for (int32 i = 0; i < SpawnCount; ++i)
+        if (!(IsRoomInCollisionBox())) { return; }
+
+        for (int32 i = 0; i < SpawnCount; ++i) {
+            // Try up to 10 times to find a free spot
+            const int32 MaxAttempts = 10;
+            bool bSpawned = false;
+            for (int32 Attempt = 0; Attempt < MaxAttempts; ++Attempt)
             {
-                if (SpawnableActor)
+                FVector SpawnLocation = GetRandomPointInCollisionBox();
+
+                // You may want to set a reasonable radius for your actor
+                float ActorRadius = 50.0f;
+
+                if (IsSpawnLocationFree(SpawnLocation, ActorRadius))
                 {
-                    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(SpawnableActor, GetActorLocation(), FRotator::ZeroRotator);
+                    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(SpawnableActor, SpawnLocation, FRotator::ZeroRotator);
                     if (SpawnedActor)
                     {
-                        // Set the difficulty variable on the spawned actor
                         SetActorDifficulty(SpawnedActor);
+                        bSpawned = true;
+                        break;
                     }
                 }
             }
@@ -102,4 +114,29 @@ bool ASpawnSystem::IsRoomInCollisionBox() const
 
     // Check if the number of overlapping actors is less than the max allowed
     return OverlappingActors.Num() < MaxActorsInCollisionBox;
+}
+
+// Helper function to check if a location is free of collisions
+bool ASpawnSystem::IsSpawnLocationFree(const FVector& Location, float Radius) const
+{
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+
+    // You may want to adjust the collision channel and shape as needed
+    return !GetWorld()->OverlapBlockingTestByChannel(
+        Location,
+        FQuat::Identity,
+        ECC_Pawn, // Or ECC_WorldStatic, depending on your needs
+        FCollisionShape::MakeSphere(Radius),
+        Params
+    );
+}
+
+FVector ASpawnSystem::GetRandomPointInCollisionBox() const
+{
+    FVector BoxExtent = CollisionBox->GetScaledBoxExtent();
+    FVector BoxOrigin = CollisionBox->GetComponentLocation();
+
+    FVector RandomLocal = UKismetMathLibrary::RandomPointInBoundingBox(FVector::ZeroVector, BoxExtent);
+    return BoxOrigin + RandomLocal;
 }

@@ -21,6 +21,9 @@ protected:
 
     void SetActorDifficulty(AActor* SpawnedActor);
 
+    FVector GetRandomPointInCollisionBox() const;
+    bool IsSpawnLocationFree(const FVector& Location, float Radius) const;
+
 public:	
     // Called every frame
     virtual void Tick(float DeltaTime) override;
