@@ -63,4 +63,8 @@ public:
     // Difficulty multiplier based on day count
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float DifficultyMultiplierPerDay = 0.1f;
+
+    // Height to check for actors above the box for the population limit
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float DetectionHeight = 1000.0f;
 };

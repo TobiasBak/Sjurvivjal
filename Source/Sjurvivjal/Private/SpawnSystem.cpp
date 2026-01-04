@@ -68,10 +68,12 @@ void ASpawnSystem::Tick(float DeltaTime)
             bool bSpawned = false;
             for (int32 Attempt = 0; Attempt < MaxAttempts; ++Attempt)
             {
-                FVector SpawnLocation = GetRandomPointInCollisionBox();
-
                 // You may want to set a reasonable radius for your actor
                 float ActorRadius = 50.0f;
+                FVector SpawnLocation = GetRandomPointInCollisionBox();
+                
+                // Offset along the local Up axis of the box to correctly handle rotation
+                SpawnLocation += CollisionBox->GetUpVector() * ActorRadius;
 
                 if (IsSpawnLocationFree(SpawnLocation, ActorRadius))
                 {
@@ -109,11 +111,41 @@ void ASpawnSystem::SetActorDifficulty(AActor* SpawnedActor)
 
 bool ASpawnSystem::IsRoomInCollisionBox() const
 {
-    TArray<AActor*> OverlappingActors;
-    CollisionBox->GetOverlappingActors(OverlappingActors);
+    FVector BoxExtent = CollisionBox->GetScaledBoxExtent();
+    FVector BoxLocation = CollisionBox->GetComponentLocation();
+    FQuat BoxRotation = CollisionBox->GetComponentQuat();
 
-    // Check if the number of overlapping actors is less than the max allowed
-    return OverlappingActors.Num() < MaxActorsInCollisionBox;
+    // Use the configurable DetectionHeight (defaulting to 1000 for tall actors like trees)
+    FVector DetectionExtent = FVector(BoxExtent.X, BoxExtent.Y, DetectionHeight / 2.0f);
+    
+    // Offset the center of the detection box so it covers the space from the surface upwards
+    FVector DetectionLocation = BoxLocation + BoxRotation.RotateVector(FVector(0, 0, BoxExtent.Z + DetectionHeight / 2.0f));
+
+    TArray<FOverlapResult> Overlaps;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+
+    // Use ECC_Visibility to catch both Pawns and Static/Dynamic objects like trees
+    GetWorld()->OverlapMultiByChannel(
+        Overlaps,
+        DetectionLocation,
+        BoxRotation,
+        ECC_Visibility, 
+        FCollisionShape::MakeBox(DetectionExtent),
+        Params
+    );
+
+    int32 Count = 0;
+    for (const FOverlapResult& Overlap : Overlaps)
+    {
+        AActor* OverlapActor = Overlap.GetActor();
+        if (OverlapActor && (!SpawnableActor || OverlapActor->IsA(SpawnableActor)))
+        {
+            Count++;
+        }
+    }
+
+    return Count < MaxActorsInCollisionBox;
 }
 
 // Helper function to check if a location is free of collisions
@@ -122,11 +154,11 @@ bool ASpawnSystem::IsSpawnLocationFree(const FVector& Location, float Radius) co
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
 
-    // You may want to adjust the collision channel and shape as needed
+    // Use Visibility channel to match the population check
     return !GetWorld()->OverlapBlockingTestByChannel(
         Location,
         FQuat::Identity,
-        ECC_Pawn, // Or ECC_WorldStatic, depending on your needs
+        ECC_Visibility, 
         FCollisionShape::MakeSphere(Radius),
         Params
     );
@@ -134,9 +166,12 @@ bool ASpawnSystem::IsSpawnLocationFree(const FVector& Location, float Radius) co
 
 FVector ASpawnSystem::GetRandomPointInCollisionBox() const
 {
-    FVector BoxExtent = CollisionBox->GetScaledBoxExtent();
-    FVector BoxOrigin = CollisionBox->GetComponentLocation();
+    // Use unscaled extent to avoid double-scaling when using TransformPosition
+    FVector BoxExtent = CollisionBox->GetUnscaledBoxExtent();
+    FTransform BoxTransform = CollisionBox->GetComponentTransform();
 
     FVector RandomLocal = UKismetMathLibrary::RandomPointInBoundingBox(FVector::ZeroVector, BoxExtent);
-    return BoxOrigin + RandomLocal;
+    RandomLocal.Z = BoxExtent.Z; // Ensure it spawns on the top surface
+    
+    return BoxTransform.TransformPosition(RandomLocal);
 }
