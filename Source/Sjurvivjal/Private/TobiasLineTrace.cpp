@@ -12,7 +12,8 @@ UTobiasLineTrace::UTobiasLineTrace()
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
 
-	// ...
+	TraceDistance = 500.0f;
+	bTraceFromCamera = true;
 }
 
 
@@ -48,7 +49,7 @@ void UTobiasLineTrace::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	}
 }
 
-FHitResult UTobiasLineTrace::LineTrace()
+FHitResult UTobiasLineTrace::LineTrace(float InTraceDistance)
 {
 	APawn* Owner = Cast<APawn>(GetOwner());
 	if (!Owner)
@@ -65,7 +66,9 @@ FHitResult UTobiasLineTrace::LineTrace()
 		}
 	}
 	FRotator Direction = Owner->GetBaseAimRotation();
-	FVector End = ((Direction.Vector().GetSafeNormal() * TraceDistance) + Start);
+	
+	float ActualDistance = (InTraceDistance >= 0.0f) ? InTraceDistance : TraceDistance;
+	FVector End = ((Direction.Vector().GetSafeNormal() * ActualDistance) + Start);
 
 	FCollisionQueryParams CollisionParams;
 	CollisionParams.AddIgnoredActor(GetOwner()); // Ignore the owner actor

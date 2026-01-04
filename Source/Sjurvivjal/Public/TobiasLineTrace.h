@@ -35,5 +35,5 @@ public:
 	bool bTraceFromCamera;
 
 	UFUNCTION(BlueprintCallable)
-	FHitResult LineTrace();
+	FHitResult LineTrace(float InTraceDistance = -1.0f);
 };
