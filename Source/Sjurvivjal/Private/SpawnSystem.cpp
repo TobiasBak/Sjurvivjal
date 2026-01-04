@@ -1,5 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
+#include "GameFramework/Character.h"
+#include "Components/CapsuleComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "SpawnSystem.h"
 #include "Components/BoxComponent.h"
@@ -17,6 +19,7 @@ ASpawnSystem::ASpawnSystem()
 	SpawnCount = 1;
 	MaxActorsInCollisionBox = 5;
 	bSpawnOnlyAtNight = false; // Default: spawn at any time
+    TimeSinceLastSpawn = 0.0f;
 
 	// Create and attach the collision box
     CollisionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("CollisionBox"));
@@ -34,56 +37,162 @@ void ASpawnSystem::BeginPlay()
 	
 }
 
-float TimeSinceLastSpawn = 0.0f;
-
 // Called every frame
 void ASpawnSystem::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (!SpawnableActor) { return; }
+    if (!SpawnableActor) 
+    { 
+        static float LastNoActorLogTime = 0.0f;
+        if (GetWorld()->GetTimeSeconds() - LastNoActorLogTime > 5.0f)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("SpawnSystem (%s): No SpawnableActor set!"), *GetName());
+            LastNoActorLogTime = GetWorld()->GetTimeSeconds();
+        }
+        return; 
+    }
 
     TimeSinceLastSpawn += DeltaTime;
 
     if (TimeSinceLastSpawn >= SpawnDelay)
     {
-        TimeSinceLastSpawn = 0.0f;
-
         // Check if spawning is allowed based on the day/night cycle
         if (DayNightCycle)
         {
             bool bIsDaytime = DayNightCycle->IsDaytime();
-            if ((bSpawnOnlyAtNight && bIsDaytime) || (!bSpawnOnlyAtNight && !bIsDaytime))
+            bool bShouldSpawn = true;
+
+            if (bSpawnOnlyAtNight && bIsDaytime)
             {
-                return; // Skip spawning if the time doesn't match the spawn condition
+                bShouldSpawn = false;
+            }
+
+            if (!bShouldSpawn)
+            {
+                UE_LOG(LogTemp, Log, TEXT("SpawnSystem (%s): Skipping spawn - Day/Night condition not met (NightOnly: %d, IsDay: %d)"), *GetName(), bSpawnOnlyAtNight, bIsDaytime);
+                TimeSinceLastSpawn = 0.0f; // Reset timer even if we skipped due to condition
+                return;
             }
         }
 
         // Check if there is room in the collision box
-        if (!(IsRoomInCollisionBox())) { return; }
+        if (!(IsRoomInCollisionBox())) 
+        { 
+            // IsRoomInCollisionBox already logs details
+            TimeSinceLastSpawn = 0.0f; // Reset timer so we don't spam every frame when full
+            return; 
+        }
+
+        UE_LOG(LogTemp, Log, TEXT("SpawnSystem (%s): SpawnDelay (%f) reached. Attempting to spawn %d actors of type %s"), *GetName(), SpawnDelay, SpawnCount, *SpawnableActor->GetName());
+        TimeSinceLastSpawn = 0.0f;
 
         for (int32 i = 0; i < SpawnCount; ++i) {
             // Try up to 10 times to find a free spot
             const int32 MaxAttempts = 10;
             bool bSpawned = false;
+            
+            float ActorRadius = 50.0f;
+            float ActorHalfHeight = 50.0f;
+            bool bIsPawn = false;
+
+            if (SpawnableActor)
+            {
+                if (AActor* DefaultActor = SpawnableActor->GetDefaultObject<AActor>())
+                {
+                    bIsPawn = DefaultActor->IsA<APawn>();
+                    
+                    // For Characters/Pawns, GetSimpleCollisionCylinder on CDO can return 0.
+                    // We'll try to find the RootComponent's shape directly or use default values.
+                    float ComponentRadius, ComponentHalfHeight;
+                    DefaultActor->GetSimpleCollisionCylinder(ComponentRadius, ComponentHalfHeight);
+                    
+                    if (ComponentRadius <= 0.1f)
+                    {
+                        // Fallback: If it's a character, use standard capsule defaults if cylinder query failed
+                        if (ACharacter* DefaultChar = Cast<ACharacter>(DefaultActor))
+                        {
+                            if (UCapsuleComponent* Capsule = DefaultChar->GetCapsuleComponent())
+                            {
+                                ActorRadius = Capsule->GetScaledCapsuleRadius();
+                                ActorHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+                            }
+                        }
+                        
+                        // If still 0, use safe defaults for a humanoid
+                        if (ActorRadius <= 0.1f)
+                        {
+                            ActorRadius = 34.0f;
+                            ActorHalfHeight = 88.0f;
+                        }
+                    }
+                    else
+                    {
+                        ActorRadius = ComponentRadius;
+                        ActorHalfHeight = ComponentHalfHeight;
+                    }
+                }
+            }
+
+            UE_LOG(LogTemp, Verbose, TEXT("SpawnSystem (%s): Detected ActorRadius=%f, ActorHalfHeight=%f for %s"), *GetName(), ActorRadius, ActorHalfHeight, *SpawnableActor->GetName());
+
             for (int32 Attempt = 0; Attempt < MaxAttempts; ++Attempt)
             {
-                // You may want to set a reasonable radius for your actor
-                float ActorRadius = 50.0f;
                 FVector SpawnLocation = GetRandomPointInCollisionBox();
+                FVector FinalLocation = SpawnLocation;
+                AActor* GroundActor = nullptr;
                 
-                // Offset along the local Up axis of the box to correctly handle rotation
-                SpawnLocation += CollisionBox->GetUpVector() * ActorRadius;
+                // Trace down to find the ground
+                FHitResult GroundHit;
+                FVector TraceStart = SpawnLocation;
+                FVector TraceEnd = TraceStart - (CollisionBox->GetUpVector() * 10000.0f); // Trace down 100m
+                FCollisionQueryParams TraceParams;
+                TraceParams.AddIgnoredActor(this);
 
-                if (IsSpawnLocationFree(SpawnLocation, ActorRadius))
+                if (GetWorld()->LineTraceSingleByChannel(GroundHit, TraceStart, TraceEnd, ECC_Visibility, TraceParams))
                 {
-                    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(SpawnableActor, SpawnLocation, FRotator::ZeroRotator);
+                    FinalLocation = GroundHit.Location;
+                    GroundActor = GroundHit.GetActor();
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("SpawnSystem (%s): Attempt %d failed - No ground hit below %s"), *GetName(), Attempt, *TraceStart.ToString());
+                    continue;
+                }
+
+                // If it's a Pawn (like an enemy), the pivot is usually at the center.
+                // Environment objects (rocks/trees) usually have pivots at the base.
+                FVector ActualSpawnLocation = FinalLocation;
+                if (bIsPawn)
+                {
+                    ActualSpawnLocation += CollisionBox->GetUpVector() * (ActorHalfHeight + 2.0f);
+                }
+
+                // Check for clearance at the intended location
+                float CheckHeight = bIsPawn ? ActorHalfHeight : ActorRadius;
+                FVector CheckLocation = FinalLocation + CollisionBox->GetUpVector() * (CheckHeight + 1.0f);
+
+                if (IsSpawnLocationFree(CheckLocation, ActorRadius, GroundActor))
+                {
+                    FActorSpawnParameters SpawnParams;
+                    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+                    
+                    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(SpawnableActor, ActualSpawnLocation, FRotator::ZeroRotator, SpawnParams);
                     if (SpawnedActor)
                     {
                         SetActorDifficulty(SpawnedActor);
                         bSpawned = true;
+                        UE_LOG(LogTemp, Log, TEXT("SpawnSystem (%s): Successfully spawned %s at %s"), *GetName(), *SpawnableActor->GetName(), *ActualSpawnLocation.ToString());
                         break;
                     }
+                    else
+                    {
+                        UE_LOG(LogTemp, Error, TEXT("SpawnSystem (%s): SpawnActor failed for %s even though location was free"), *GetName(), *SpawnableActor->GetName());
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("SpawnSystem (%s): Attempt %d failed - Location %s is blocked"), *GetName(), Attempt, *CheckLocation.ToString());
                 }
             }
         }
@@ -115,17 +224,18 @@ bool ASpawnSystem::IsRoomInCollisionBox() const
     FVector BoxLocation = CollisionBox->GetComponentLocation();
     FQuat BoxRotation = CollisionBox->GetComponentQuat();
 
-    // Use the configurable DetectionHeight (defaulting to 1000 for tall actors like trees)
-    FVector DetectionExtent = FVector(BoxExtent.X, BoxExtent.Y, DetectionHeight / 2.0f);
+    // Use a larger detection height to include actors spawned on the ground below the box
+    float TraceDownDistance = 10000.0f;
+    float TotalDetectionHeight = DetectionHeight + TraceDownDistance;
+    FVector DetectionExtent = FVector(BoxExtent.X, BoxExtent.Y, TotalDetectionHeight / 2.0f);
     
-    // Offset the center of the detection box so it covers the space from the surface upwards
-    FVector DetectionLocation = BoxLocation + BoxRotation.RotateVector(FVector(0, 0, BoxExtent.Z + DetectionHeight / 2.0f));
+    // Offset the center so it covers the space from TraceDownDistance below the surface up to DetectionHeight above
+    FVector DetectionLocation = BoxLocation + BoxRotation.RotateVector(FVector(0, 0, BoxExtent.Z + DetectionHeight - (TotalDetectionHeight / 2.0f)));
 
     TArray<FOverlapResult> Overlaps;
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
 
-    // Use ECC_Visibility to catch both Pawns and Static/Dynamic objects like trees
     GetWorld()->OverlapMultiByChannel(
         Overlaps,
         DetectionLocation,
@@ -135,13 +245,29 @@ bool ASpawnSystem::IsRoomInCollisionBox() const
         Params
     );
 
-    int32 Count = 0;
+    TSet<AActor*> UniqueActors;
     for (const FOverlapResult& Overlap : Overlaps)
     {
         AActor* OverlapActor = Overlap.GetActor();
         if (OverlapActor && (!SpawnableActor || OverlapActor->IsA(SpawnableActor)))
         {
-            Count++;
+            UniqueActors.Add(OverlapActor);
+        }
+    }
+
+    int32 Count = UniqueActors.Num();
+    
+    if (Count >= MaxActorsInCollisionBox)
+    {
+        UE_LOG(LogTemp, Log, TEXT("SpawnSystem (%s): Population limit reached. Found %d actors of type %s. Limit is %d."), 
+            *GetName(), Count, SpawnableActor ? *SpawnableActor->GetName() : TEXT("None"), MaxActorsInCollisionBox);
+        
+        // Log the first few actors found to help debug
+        int32 LogLimit = 0;
+        for (AActor* Actor : UniqueActors)
+        {
+            UE_LOG(LogTemp, Verbose, TEXT(" - Found: %s at %s"), *Actor->GetName(), *Actor->GetActorLocation().ToString());
+            if (++LogLimit >= 3) break;
         }
     }
 
@@ -149,10 +275,14 @@ bool ASpawnSystem::IsRoomInCollisionBox() const
 }
 
 // Helper function to check if a location is free of collisions
-bool ASpawnSystem::IsSpawnLocationFree(const FVector& Location, float Radius) const
+bool ASpawnSystem::IsSpawnLocationFree(const FVector& Location, float Radius, AActor* IgnoredActor) const
 {
     FCollisionQueryParams Params;
     Params.AddIgnoredActor(this);
+    if (IgnoredActor)
+    {
+        Params.AddIgnoredActor(IgnoredActor);
+    }
 
     // Use Visibility channel to match the population check
     return !GetWorld()->OverlapBlockingTestByChannel(

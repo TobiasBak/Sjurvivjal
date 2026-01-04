@@ -22,7 +22,10 @@ protected:
     void SetActorDifficulty(AActor* SpawnedActor);
 
     FVector GetRandomPointInCollisionBox() const;
-    bool IsSpawnLocationFree(const FVector& Location, float Radius) const;
+    bool IsSpawnLocationFree(const FVector& Location, float Radius, AActor* IgnoredActor = nullptr) const;
+
+    UPROPERTY()
+    float TimeSinceLastSpawn;
 
 public:	
     // Called every frame
