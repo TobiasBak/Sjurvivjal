@@ -36,7 +36,7 @@ void UTobiasLineTrace::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	if (Hit.bBlockingHit)
 	{
 		LastTraceResult = Hit;
-		GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Green, FString::Printf(TEXT("Hit: %s"), *Hit.GetActor()->GetName()));
+		// GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Green, FString::Printf(TEXT("Hit: %s"), *Hit.GetActor()->GetName()));
 		AActor* HitActor = Hit.GetActor();
 		if (HitActor && HitActor->Implements<UBPI_Hover>())
 		{

@@ -24,7 +24,7 @@ void ADayNightCycle::BeginPlay()
 void ADayNightCycle::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-    GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Green, FString::Printf(TEXT("Current Time of Day: %f"), CurrentTimeOfDay));
+    // GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Green, FString::Printf(TEXT("Current Time of Day: %f"), CurrentTimeOfDay));
 
     // Advance time
     CurrentTimeOfDay += DeltaTime;
